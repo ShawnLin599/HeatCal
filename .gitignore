@@ -1,0 +1,30 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# macOS / Xcode
+.DS_Store
+**/.DS_Store
+DerivedData/
+**/xcuserdata/
+**/*.xcuserstate
+*.xcarchive
+*.xcresult
+*.ipa
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Web / tooling
+node_modules/
+dist/
+.next/
+.wrangler/
+
+# Local scratch
+tmp/
+*.zip

@@ -1,0 +1,1 @@
+"""HeatCal AI proxy package."""

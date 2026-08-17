@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/app-icon.png" width="112" alt="热量咔 App 图标">
+  <img src="https://shawnlin599.github.io/HeatCal/assets/app-icon.png" width="112" alt="热量咔 App 图标">
 </p>
 
 <h1 align="center">热量咔 · HeatCal</h1>
@@ -39,14 +39,14 @@
 
 <table>
   <tr>
-    <td align="center"><img src="./assets/screenshots/today.png" width="230" alt="今日饮食记录"><br><sub>今日概览</sub></td>
-    <td align="center"><img src="./assets/screenshots/record-options.png" width="230" alt="多种记录方式"><br><sub>拍照优先的记录入口</sub></td>
-    <td align="center"><img src="./assets/screenshots/text-entry.png" width="230" alt="自然语言文字补记"><br><sub>自然语言补记</sub></td>
+    <td align="center"><img src="https://shawnlin599.github.io/HeatCal/assets/screenshots/today.png" width="230" alt="今日饮食记录"><br><sub>今日概览</sub></td>
+    <td align="center"><img src="https://shawnlin599.github.io/HeatCal/assets/screenshots/record-options.png" width="230" alt="多种记录方式"><br><sub>拍照优先的记录入口</sub></td>
+    <td align="center"><img src="https://shawnlin599.github.io/HeatCal/assets/screenshots/text-entry.png" width="230" alt="自然语言文字补记"><br><sub>自然语言补记</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="./assets/screenshots/trend.png" width="230" alt="体重趋势"><br><sub>体重趋势</sub></td>
-    <td align="center"><img src="./assets/screenshots/settings.png" width="230" alt="设置与隐私"><br><sub>设置与数据隐私</sub></td>
-    <td align="center"><a href="./assets/demo/heatcal-demo.mp4"><img src="./assets/app-icon.png" width="150" alt="播放热量咔演示视频"><br><sub>▶ 查看真实 App 演示</sub></a></td>
+    <td align="center"><img src="https://shawnlin599.github.io/HeatCal/assets/screenshots/trend.png" width="230" alt="体重趋势"><br><sub>体重趋势</sub></td>
+    <td align="center"><img src="https://shawnlin599.github.io/HeatCal/assets/screenshots/settings.png" width="230" alt="设置与隐私"><br><sub>设置与数据隐私</sub></td>
+    <td align="center"><a href="https://shawnlin599.github.io/HeatCal/assets/demo/heatcal-demo.mp4"><img src="https://shawnlin599.github.io/HeatCal/assets/app-icon.png" width="150" alt="播放热量咔演示视频"><br><sub>▶ 查看真实 App 演示</sub></a></td>
   </tr>
 </table>
 
@@ -121,7 +121,7 @@ cp backend/.env.example .env.local
 python3 -m backend.heatcal_proxy --env-file .env.local
 ```
 
-代理默认监听 `http://127.0.0.1:8787`。环境变量和 API 合约见 [backend/README.md](./backend/README.md)。
+代理默认仅监听本机回环接口，监听端口可通过环境变量配置。环境变量和 API 合约见 [backend/README.md](./backend/README.md)。
 
 ### 2. 运行 iOS App
 

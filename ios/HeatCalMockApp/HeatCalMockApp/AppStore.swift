@@ -65,6 +65,7 @@ final class AppStore: ObservableObject {
         case errorState
         case textRecordInput
         case photoAnalysisProgress
+        case quickRepeat
         case settings
 
         var id: String { rawValue }
@@ -112,7 +113,7 @@ final class AppStore: ObservableObject {
     private let persistence: LocalAppPersistence?
     private var isApplyingLocalData = false
     private static let proxyBaseURLDefaultsKey = "HeatCalAIProxyBaseURL"
-    static let defaultProxyBaseURLString = "http://127.0.0.1:8787"
+    static let defaultProxyBaseURLString = "https://heatcalai-proxy-whzbvmnzce.cn-hangzhou.fcapp.run"
     private static let legacyLocalProxyHosts = ["127.0.0.1", "localhost"]
     static let defaultNutritionTarget = Nutrition(calories: 1820, protein: 110, carbs: 210, fat: 60)
     static let defaultTargetWeight = 62.0
@@ -229,8 +230,36 @@ final class AppStore: ObservableObject {
         diary.entries(on: selectedDate)
     }
 
+    var recentRepeatCandidates: [MealRepeatCandidate] {
+        diary.recentRepeatCandidates()
+    }
+
     func openRecordMenu() {
         activeModal = .recordMenu
+    }
+
+    func openQuickRepeat() {
+        guard !recentRepeatCandidates.isEmpty else {
+            toast = "保存过真实记录后，这里会显示最近吃过的食物。"
+            return
+        }
+        activeModal = .quickRepeat
+    }
+
+    func startRepeatEntry(_ entry: MealEntry, now: Date = Date()) {
+        guard entry.status == .confirmed, !entry.isMockOnly, !entry.items.isEmpty else {
+            toast = "这条记录不能用于快速复记。"
+            return
+        }
+
+        clearTransientDraftState()
+        mockErrorState = nil
+        editingEntryID = nil
+        let recordDate = defaultRecordDateForNewEntry(now: now)
+        let repeatedEntry = entry.repeated(on: recordDate, mealType: MealType.inferred(from: recordDate))
+        setNewDraftEntry(repeatedEntry, date: recordDate)
+        aiStatusMessage = "复记：已带入上次记录，保存前仍可调整"
+        activeModal = .analysisConfirmation
     }
 
     func openCameraCapture() {

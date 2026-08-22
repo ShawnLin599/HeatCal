@@ -575,6 +575,30 @@ struct DailyDiary: Equatable, Codable {
     var entries: [MealEntry]
     var weights: [WeightEntry]
 
+    func recentRepeatCandidates(limit: Int = 6) -> [MealRepeatCandidate] {
+        let eligibleEntries = entries
+            .filter { $0.status == .confirmed && !$0.isMockOnly && !$0.items.isEmpty }
+            .sorted { $0.date > $1.date }
+
+        var counts: [String: Int] = [:]
+        var latestEntries: [String: MealEntry] = [:]
+
+        for entry in eligibleEntries {
+            let signature = entry.repeatSignature
+            counts[signature, default: 0] += 1
+            if latestEntries[signature] == nil {
+                latestEntries[signature] = entry
+            }
+        }
+
+        return latestEntries.compactMap { signature, entry in
+            MealRepeatCandidate(entry: entry, timesRecorded: counts[signature, default: 1])
+        }
+        .sorted { $0.entry.date > $1.entry.date }
+        .prefix(limit)
+        .map { $0 }
+    }
+
     func nutrition(on date: Date, calendar: Calendar = Calendar(identifier: .gregorian)) -> Nutrition {
         entries
             .filter { calendar.isDate($0.date, inSameDayAs: date) }
@@ -583,5 +607,59 @@ struct DailyDiary: Equatable, Codable {
 
     func entries(on date: Date, calendar: Calendar = Calendar(identifier: .gregorian)) -> [MealEntry] {
         entries.filter { calendar.isDate($0.date, inSameDayAs: date) }
+    }
+}
+
+struct MealRepeatCandidate: Identifiable, Equatable {
+    let entry: MealEntry
+    let timesRecorded: Int
+
+    var id: MealEntry.ID { entry.id }
+
+    var title: String {
+        entry.items.map(\.name).joined(separator: "、")
+    }
+}
+
+extension MealEntry {
+    fileprivate var repeatSignature: String {
+        items
+            .map { item in
+                let size = item.actualQuantity.size ?? ""
+                return "\(item.name)|\(item.actualQuantity.amount)|\(item.actualQuantity.unit)|\(size)"
+            }
+            .sorted()
+            .joined(separator: ";")
+    }
+
+    func repeated(on date: Date, mealType: MealType) -> MealEntry {
+        let copiedItems = items.map { item in
+            FoodItem(
+                id: UUID(),
+                name: item.name,
+                recognizedQuantity: item.recognizedQuantity,
+                actualQuantity: item.actualQuantity,
+                recognizedNutrition: item.recognizedNutrition,
+                intakeSource: item.intakeSource,
+                confidence: item.confidence,
+                note: item.note,
+                overRecognizedAmountConfirmed: !item.isOverRecognizedAmount
+            )
+        }
+        let itemNames = copiedItems.map(\.name).joined(separator: "、")
+
+        return MealEntry(
+            id: UUID(),
+            date: date,
+            mealType: mealType,
+            sourceDescription: "复记：\(itemNames)",
+            status: .confirmed,
+            items: copiedItems,
+            isMockOnly: false,
+            confidence: confidence,
+            estimatedRange: estimatedRange,
+            errorHint: nil,
+            createdAt: date
+        )
     }
 }

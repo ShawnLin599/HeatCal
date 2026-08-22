@@ -430,7 +430,7 @@ final class HeatCalMockAppTests: XCTestCase {
 
     @MainActor
     func testProxyBaseURLSavePersistsAndReloadsWithoutDefaultOverwrite() throws {
-        let customURL = "http://192.0.2.10:8787"
+        let customURL = "http://192.168.1.138:8787"
         let store = AppStore(diary: DailyDiary(entries: [], weights: []), selectedDate: .mockToday)
 
         store.resetProxyBaseURLToSimulatorDefault()
@@ -559,7 +559,7 @@ final class HeatCalMockAppTests: XCTestCase {
         store.saveWeight(68.2, on: .mockToday)
         store.updateTargets(nutrition: Nutrition(calories: 1900, protein: 120, carbs: 210, fat: 55), targetWeight: 63.5)
         store.defaultMode = "精确模式"
-        store.applyProxyBaseURL("http://192.0.2.10:8787")
+        store.applyProxyBaseURL("http://192.168.1.138:8787")
 
         store.clearAllLocalData()
 
@@ -603,7 +603,7 @@ final class HeatCalMockAppTests: XCTestCase {
             nutritionTarget: Nutrition(calories: 999, protein: 1, carbs: 1, fat: 1),
             targetWeight: 99,
             defaultMode: "精确模式",
-            proxyBaseURLString: "http://192.0.2.10:8787"
+            proxyBaseURLString: "http://192.168.1.138:8787"
         )
         try JSONEncoder().encode(unsupportedSnapshot).write(to: persistence.fileURL)
 
@@ -616,6 +616,58 @@ final class HeatCalMockAppTests: XCTestCase {
         XCTAssertEqual(store.defaultMode, "快速模式")
         XCTAssertEqual(store.proxyBaseURLString, AppStore.defaultProxyBaseURLString)
         XCTAssertTrue(store.localDataMessage?.contains("本机数据无法读取") == true)
+    }
+
+    func testRecentRepeatCandidatesDeduplicateRealMealsAndExcludeMockEntries() throws {
+        let olderDate = Date.mockToday.addingTimeInterval(-86400 * 5)
+        let newerDate = Date.mockToday.addingTimeInterval(-86400)
+        let olderBreakfast = try MealEntry.confirmed(
+            date: olderDate,
+            mealType: .breakfast,
+            items: [.recognized(name: "鸡蛋", amount: 2, unit: "个", grams: 100, nutrition: Nutrition(calories: 140, protein: 12, carbs: 1, fat: 10))],
+            isMockOnly: false
+        )
+        let newerBreakfast = try MealEntry.confirmed(
+            date: newerDate,
+            mealType: .breakfast,
+            items: [.recognized(name: "鸡蛋", amount: 2, unit: "个", grams: 100, nutrition: Nutrition(calories: 140, protein: 12, carbs: 1, fat: 10))],
+            isMockOnly: false
+        )
+        let mockLunch = try MealEntry.confirmed(
+            date: Date.mockToday,
+            mealType: .lunch,
+            items: [.recognized(name: "宫保鸡丁", amount: 1, unit: "份", grams: 260, nutrition: Nutrition(calories: 420, protein: 28, carbs: 24, fat: 24))]
+        )
+
+        let candidates = DailyDiary(entries: [olderBreakfast, mockLunch, newerBreakfast], weights: []).recentRepeatCandidates()
+
+        XCTAssertEqual(candidates.count, 1)
+        XCTAssertEqual(candidates[0].entry.id, newerBreakfast.id)
+        XCTAssertEqual(candidates[0].timesRecorded, 2)
+        XCTAssertEqual(candidates[0].entry.items.map(\.name), ["鸡蛋"])
+    }
+
+    @MainActor
+    func testStartRepeatEntryCreatesNewEditableDraftForSelectedDate() throws {
+        let original = try MealEntry.confirmed(
+            date: Date.mockToday.addingTimeInterval(-86400 * 2),
+            mealType: .dinner,
+            items: [.recognized(name: "鸡蛋", amount: 2, unit: "个", grams: 100, nutrition: Nutrition(calories: 140, protein: 12, carbs: 1, fat: 10))],
+            sourceDescription: "真实 AI 图片分析",
+            isMockOnly: false
+        )
+        let selectedDate = Date.mockTodayAt(hour: 8, minute: 30)
+        let store = AppStore(diary: DailyDiary(entries: [original], weights: []), selectedDate: selectedDate, persistence: nil)
+
+        store.startRepeatEntry(original, now: selectedDate)
+
+        XCTAssertEqual(store.activeModal, .analysisConfirmation)
+        XCTAssertNotEqual(store.draftEntry?.id, original.id)
+        XCTAssertNotEqual(store.draftEntry?.items.first?.id, original.items.first?.id)
+        XCTAssertEqual(store.draftEntry?.items.first?.name, "鸡蛋")
+        XCTAssertEqual(store.draftEntry?.mealType, .breakfast)
+        XCTAssertTrue(Calendar.current.isDate(store.draftEntry!.date, inSameDayAs: selectedDate))
+        XCTAssertEqual(store.draftEntry?.sourceDescription, "复记：鸡蛋")
     }
 }
 

@@ -29,7 +29,7 @@
 
 ## 项目简介
 
-热量咔是一款围绕「降低饮食记录负担」设计的 AI 饮食记录 App。它不要求用户先搜索食物、选择数据库条目再估算克数，而是用 **拍照优先、文字补记兜底、实际摄入可调整** 的方式完成记录。
+热量咔是一款围绕「降低饮食记录负担」设计的 AI 饮食记录 App。它不要求用户先搜索食物、选择数据库条目再估算克数，而是用 **拍照优先、文字补记兜底、快速复记、实际摄入可调整** 的方式完成记录。
 
 这个项目不是一张停留在概念阶段的 UI 稿：它已经打通 iOS App、云端轻量代理、图片识别、文字解析、本机持久化和错误兜底，并经历多轮真机体验修订与自动化验证。
 
@@ -37,16 +37,13 @@
 
 ## 真实界面
 
+<p align="center"><sub>以下均为 2026 年 8 月 22 日在 iPhone 17 Pro 模拟器上运行最新构建时采集的真实界面。</sub></p>
+
 <table>
   <tr>
-    <td align="center"><img src="https://shawnlin599.github.io/HeatCal/assets/screenshots/today.png" width="230" alt="今日饮食记录"><br><sub>今日概览</sub></td>
-    <td align="center"><img src="https://shawnlin599.github.io/HeatCal/assets/screenshots/record-options.png" width="230" alt="多种记录方式"><br><sub>拍照优先的记录入口</sub></td>
-    <td align="center"><img src="https://shawnlin599.github.io/HeatCal/assets/screenshots/text-entry.png" width="230" alt="自然语言文字补记"><br><sub>自然语言补记</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="https://shawnlin599.github.io/HeatCal/assets/screenshots/trend.png" width="230" alt="体重趋势"><br><sub>体重趋势</sub></td>
-    <td align="center"><img src="https://shawnlin599.github.io/HeatCal/assets/screenshots/settings.png" width="230" alt="设置与隐私"><br><sub>设置与数据隐私</sub></td>
-    <td align="center"><a href="https://shawnlin599.github.io/HeatCal/assets/demo/heatcal-demo.mp4"><img src="https://shawnlin599.github.io/HeatCal/assets/app-icon.png" width="150" alt="播放热量咔演示视频"><br><sub>▶ 查看真实 App 演示</sub></a></td>
+    <td align="center"><img src="https://shawnlin599.github.io/HeatCal/assets/screenshots/today.png" width="230" alt="今日饮食总览"><br><sub>今日饮食总览</sub></td>
+    <td align="center"><img src="https://shawnlin599.github.io/HeatCal/assets/screenshots/trend.png" width="230" alt="体重趋势与历史记录"><br><sub>体重趋势与历史记录</sub></td>
+    <td align="center"><img src="https://shawnlin599.github.io/HeatCal/assets/screenshots/settings.png" width="230" alt="饮食计划、隐私与 AI 连接诊断"><br><sub>饮食计划、隐私与 AI 连接诊断</sub></td>
   </tr>
 </table>
 
@@ -62,13 +59,17 @@
 
 照片里的食物不等于实际吃下的食物。热量咔允许用户逐项修改实际摄入量，也支持自然语言修正，例如「鸡蛋吃了一半，米饭全部吃完」。
 
-### 3. 不确定性可见、结果可修正
+### 3. 快速复记，减少重复输入
+
+保存过的真实饮食记录可直接带入新的待确认记录；用户仍可调整餐别、日期和实际摄入，再决定是否保存。
+
+### 4. 不确定性可见、结果可修正
 
 - 显示估算范围与置信度，不制造虚假精确。
 - 识别结果可以编辑、删除或重新分析。
 - Provider 故障时采用统一错误模型，并明确区分真实 AI 与 fallback。
 
-### 4. 隐私优先的 MVP 数据策略
+### 5. 隐私优先的 MVP 数据策略
 
 - 饮食记录、体重与目标保存在本机。
 - iOS App 不持有 Provider API Key。
@@ -80,7 +81,8 @@
 ```mermaid
 flowchart LR
     U["用户：拍照 / 文字"] --> A["SwiftUI iOS App"]
-    A --> P["HeatCalAIProxy"]
+    A --> P["云端 HeatCalAIProxy\n（默认连接）"]
+    A -. "本机调试" .-> D["本机 HeatCalAIProxy"]
     P --> V["DashScope / Qwen\n图片识别"]
     P --> T["DeepSeek\n文字解析与修正"]
     A --> L["本机 JSON 快照\n饮食与体重数据"]
@@ -89,7 +91,7 @@ flowchart LR
 | 层级 | 技术 | 职责 |
 | --- | --- | --- |
 | iOS 客户端 | Swift 6、SwiftUI、URLSession | 拍照、补记、确认、摄入调整、趋势与本机持久化 |
-| AI 代理 | Python 标准库 HTTP 服务 | 隐藏密钥、调用 Provider、校验响应、归一化错误 |
+| AI 服务 | Python 标准库 HTTP 服务，可部署为云端函数 | 隐藏密钥、调用 Provider、校验响应、归一化错误；App 默认连接云端服务 |
 | 图片理解 | DashScope / Qwen | 食物识别与结构化营养估算 |
 | 文字理解 | DeepSeek | 自然语言补记和实际摄入修正 |
 
@@ -113,7 +115,7 @@ HeatCal/
 - Python 3.10+
 - DashScope 与 DeepSeek API Key（仅真实 AI 链路需要）
 
-### 1. 启动 AI 代理
+### 1. 启动本机 AI 代理（可选，仅本地调试）
 
 ```bash
 cp backend/.env.example .env.local
@@ -121,7 +123,7 @@ cp backend/.env.example .env.local
 python3 -m backend.heatcal_proxy --env-file .env.local
 ```
 
-代理默认仅监听本机回环接口，监听端口可通过环境变量配置。环境变量和 API 合约见 [backend/README.md](./backend/README.md)。
+公开构建默认连接云端 AI 服务；只有调试本机代理时才需要填写 Provider Key 和启动上述服务。环境变量和 API 合约见 [backend/README.md](./backend/README.md)。
 
 ### 2. 运行 iOS App
 
@@ -129,7 +131,7 @@ python3 -m backend.heatcal_proxy --env-file .env.local
 open ios/HeatCalMockApp/HeatCalMockApp.xcodeproj
 ```
 
-在 Xcode 中选择 `HeatCalMockApp` scheme 和任意 iOS 17+ 模拟器运行。公开版默认连接本机代理；真机联调时可在 App 的高级设置中填写 Mac 的局域网地址。
+在 Xcode 中选择 `HeatCalMockApp` scheme 和任意 iOS 17+ 模拟器运行。App 默认连接云端服务；需要排查网络或本机代理时，可在「AI 连接诊断」中临时调整服务地址。
 
 ### 3. 运行测试
 
@@ -151,7 +153,7 @@ xcodebuild \
 
 | 验证范围 | 结果 |
 | --- | --- |
-| Swift / XCTest | 33 项通过 |
+| Swift / XCTest | 35 项通过 |
 | Python 后端契约测试 | 9 项通过 |
 | Provider Key 与私钥模式扫描 | 未发现真实凭据 |
 | 单文件大小检查 | 无文件超过 GitHub 50 MiB 安全阈值 |

@@ -42,6 +42,9 @@ struct RootView: View {
                 PhotoAnalysisProgressView()
                     .interactiveDismissDisabled()
                     .presentationDetents([.height(300)])
+            case .quickRepeat:
+                QuickRepeatView()
+                    .presentationDetents([.medium])
             case .settings:
                 SettingsView()
             }
@@ -735,6 +738,12 @@ struct RecordMenuView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
+                if !store.recentRepeatCandidates.isEmpty {
+                    ButtonRow(icon: "clock.arrow.circlepath", title: "最近吃过", subtitle: "从已保存的真实记录中快速复记") {
+                        store.openQuickRepeat()
+                    }
+                }
+
                 ButtonRow(icon: "camera.fill", title: "拍照记录", subtitle: "打开相机拍摄饮食照片并进行 AI 分析") {
                     store.openCameraCapture()
                 }
@@ -772,6 +781,67 @@ struct RecordMenuView: View {
                 }
             }
             .padding()
+        }
+    }
+}
+
+struct QuickRepeatView: View {
+    @EnvironmentObject private var store: AppStore
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("会带入上次的食物和实际摄入；你可以在确认页继续调整。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                    ForEach(store.recentRepeatCandidates) { candidate in
+                        Button {
+                            store.startRepeatEntry(candidate.entry)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.title3.weight(.semibold))
+                                    .foregroundStyle(Color.coral)
+                                    .frame(width: 30)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(candidate.title)
+                                        .font(.headline)
+                                        .foregroundStyle(Color.ink)
+                                        .lineLimit(1)
+                                    Text("\(candidate.entry.mealType.title) · \(candidate.entry.date.chineseDateText) · 约 \(Int(candidate.entry.nutrition.calories)) 千卡")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer()
+                                if candidate.timesRecorded > 1 {
+                                    Text("常吃 \(candidate.timesRecorded) 次")
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(Color.coral)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 5)
+                                        .background(Color.coral.opacity(0.12))
+                                        .clipShape(Capsule())
+                                }
+                            }
+                            .padding(14)
+                            .background(Color.surface)
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle("最近吃过")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { store.activeModal = .recordMenu }
+                }
+            }
         }
     }
 }
@@ -2124,91 +2194,532 @@ struct TrendLine: View {
 
 struct SettingsView: View {
     @EnvironmentObject private var store: AppStore
-    @State private var proxyBaseURLDraft = ""
-    @State private var aboutTapCount = 0
-    @State private var showsAdvancedAISettings = false
+    @State private var showsGoalSettings = false
+    @State private var showsDataAndPrivacy = false
+    @State private var showsConnectionDiagnostics = false
+
+    private var calorieProgress: Double {
+        guard store.dailyTarget.calories > 0 else { return 0 }
+        return min(max(store.todayNutrition.calories / store.dailyTarget.calories, 0), 1)
+    }
+
+    private var remainingCalories: Int {
+        max(Int(store.dailyTarget.calories - store.todayNutrition.calories), 0)
+    }
 
     var body: some View {
         NavigationStack {
-            List {
-                Section("目标与记录") {
-                    Picker("默认模式", selection: $store.defaultMode) {
-                        Text("快速模式").tag("快速模式")
-                        Text("精确模式").tag("精确模式")
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(spacing: 13) {
+                        SettingsProfileMark()
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("我的饮食计划")
+                                .font(.title2.weight(.bold))
+                            Text("记录每一餐，也记录自己的节奏")
+                                .font(.subheadline)
+                                .foregroundStyle(Color.readableSecondary)
+                        }
+                        Spacer()
                     }
-                    .pickerStyle(.segmented)
+
+                    Button {
+                        showsGoalSettings = true
+                    } label: {
+                        SettingsTodayHero(
+                            remainingCalories: remainingCalories,
+                            mealCount: store.selectedEntries.count,
+                            progress: calorieProgress,
+                            calorieTarget: Int(store.dailyTarget.calories),
+                            targetWeight: String(format: "%.1f", store.targetWeight)
+                        )
+                    }
+                    .buttonStyle(SettingsHeroButtonStyle())
+
+                    SettingsSection(title: "应用管理") {
+                        Button {
+                            showsDataAndPrivacy = true
+                        } label: {
+                            SettingsNavigationRow(
+                                icon: "lock.shield",
+                                title: "本机数据与隐私",
+                                subtitle: "查看保存范围、照片处理和删除全部数据"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        Divider()
+                        Button {
+                            showsConnectionDiagnostics = true
+                        } label: {
+                            SettingsNavigationRow(
+                                icon: "network",
+                                title: "AI 连接诊断",
+                                subtitle: "仅在识别、文字补记或网络异常时使用"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Text("热量咔 1.0 · 营养结果仅作饮食记录参考，不作为医疗建议。")
+                        .font(.caption)
+                        .foregroundStyle(Color.readableSecondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 2)
                 }
-                Section("数据与隐私") {
-                    Text("目标、饮食记录、体重记录和可重置设置会保存在本机；卸载 App 或更换手机会丢失。")
-                    Text("食物照片仅用于本次 AI 分析，不在 App 内长期保存。")
-                    Text("营养结果为估算参考，不作为医疗建议。")
-                    Text("你可以删除单条饮食记录，也可以在这里删除全部本机数据并重新开始。")
+                .padding()
+            }
+            .background(Color.cream)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { store.activeModal = nil }
+                }
+            }
+            .sheet(isPresented: $showsGoalSettings) {
+                GoalSettingsSheet()
+                    .presentationDetents([.large])
+            }
+            .sheet(isPresented: $showsDataAndPrivacy) {
+                DataAndPrivacySheet()
+                    .presentationDetents([.medium, .large])
+            }
+            .sheet(isPresented: $showsConnectionDiagnostics) {
+                ConnectionDiagnosticsSheet()
+                    .presentationDetents([.medium, .large])
+            }
+        }
+    }
+}
+
+struct SettingsSection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.readableSecondary)
+                .padding(.horizontal, 4)
+            VStack(spacing: 0) {
+                content()
+            }
+            .padding(.horizontal, 16)
+            .background(Color.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(Color.black.opacity(0.05))
+            }
+        }
+    }
+}
+
+struct SettingsProfileMark: View {
+    var body: some View {
+        Image(systemName: "fork.knife")
+            .font(.system(size: 23, weight: .semibold))
+            .foregroundStyle(Color.coral)
+            .frame(width: 52, height: 52)
+            .background(Color.coral.opacity(0.12))
+            .clipShape(Circle())
+    }
+}
+
+struct SettingsTodayHero: View {
+    let remainingCalories: Int
+    let mealCount: Int
+    let progress: Double
+    let calorieTarget: Int
+    let targetWeight: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 15) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("今日饮食")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.ink)
+                    Text("还可摄入")
+                        .font(.caption)
+                        .foregroundStyle(Color.readableSecondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(Color.coral)
+                    .frame(width: 32, height: 32)
+                    .background(Color.surface.opacity(0.72))
+                    .clipShape(Circle())
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text("\(remainingCalories)")
+                    .font(.system(size: 36, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.ink)
+                Text("千卡")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Color.readableSecondary)
+                Spacer()
+                Text("已记录 \(mealCount) 餐")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.coral)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.surface.opacity(0.58))
+                    .clipShape(Capsule())
+            }
+
+            ProgressView(value: progress)
+                .tint(Color.coral)
+                .scaleEffect(x: 1, y: 1.6, anchor: .center)
+                .padding(.vertical, 2)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 18) {
+                    SettingsPlanMetric(title: "每日目标", value: "\(calorieTarget)", unit: "千卡")
+                    Rectangle()
+                        .fill(Color.coral.opacity(0.18))
+                        .frame(width: 1, height: 34)
+                    SettingsPlanMetric(title: "目标体重", value: targetWeight, unit: "kg")
+                }
+            }
+        }
+        .padding(18)
+        .background(
+            LinearGradient(
+                colors: [Color.coral.opacity(0.18), Color.amber.opacity(0.62)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.coral.opacity(0.12))
+        }
+    }
+}
+
+struct SettingsPlanMetric: View {
+    let title: String
+    let value: String
+    let unit: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(Color.readableSecondary)
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text(value)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(Color.ink)
+                Text(unit)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(Color.readableSecondary)
+            }
+        }
+    }
+}
+
+struct SettingsHeroButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.985 : 1)
+            .brightness(configuration.isPressed ? -0.015 : 0)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+struct SettingsInfoRow: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Color.coral)
+                .frame(width: 26, height: 26)
+                .background(Color.coral.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.ink)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(Color.readableSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 15)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct SettingsNavigationRow: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            SettingsInfoRow(icon: icon, title: title, subtitle: subtitle)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.readableSecondary)
+        }
+        .contentShape(Rectangle())
+    }
+}
+
+struct GoalSettingsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var store: AppStore
+    @State private var caloriesText = ""
+    @State private var proteinText = ""
+    @State private var carbsText = ""
+    @State private var fatText = ""
+    @State private var targetWeightText = ""
+
+    private var goalValues: (nutrition: Nutrition, targetWeight: Double)? {
+        guard
+            let calories = validValue(caloriesText, in: 800...5000),
+            let protein = validValue(proteinText, in: 0...500),
+            let carbs = validValue(carbsText, in: 0...800),
+            let fat = validValue(fatText, in: 0...300),
+            let targetWeight = validValue(targetWeightText, in: 20...300)
+        else {
+            return nil
+        }
+        return (Nutrition(calories: calories, protein: protein, carbs: carbs, fat: fat), targetWeight)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("目标用于展示每日营养进度和体重趋势，不会替代医疗建议。")
+                        .font(.footnote)
+                        .foregroundStyle(Color.readableSecondary)
+
+                    Card {
+                        Text("每日营养目标")
+                            .font(.headline)
+                        GoalNumberField(title: "热量", unit: "千卡", text: $caloriesText)
+                        Divider()
+                        GoalNumberField(title: "蛋白质", unit: "g", text: $proteinText)
+                        Divider()
+                        GoalNumberField(title: "碳水", unit: "g", text: $carbsText)
+                        Divider()
+                        GoalNumberField(title: "脂肪", unit: "g", text: $fatText)
+                    }
+
+                    Card {
+                        Text("体重目标")
+                            .font(.headline)
+                        GoalNumberField(title: "目标体重", unit: "kg", text: $targetWeightText)
+                    }
+
+                    if goalValues == nil {
+                        Text("请填写合理的目标：热量 800–5,000 千卡，体重 20–300 kg。")
+                            .font(.caption)
+                            .foregroundStyle(Color.amberText)
+                    }
+
+                    Button("保存目标") {
+                        guard let goalValues else { return }
+                        store.updateTargets(nutrition: goalValues.nutrition, targetWeight: goalValues.targetWeight)
+                        store.toast = "目标已更新"
+                        dismiss()
+                    }
+                    .disabled(goalValues == nil)
+                    .buttonStyle(PrimaryActionButtonStyle())
+                }
+                .padding()
+            }
+            .background(Color.cream)
+            .navigationTitle("饮食与体重目标")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+            }
+            .onAppear {
+                caloriesText = String(Int(store.dailyTarget.calories))
+                proteinText = String(Int(store.dailyTarget.protein))
+                carbsText = String(Int(store.dailyTarget.carbs))
+                fatText = String(Int(store.dailyTarget.fat))
+                targetWeightText = String(format: "%.1f", store.targetWeight)
+            }
+        }
+    }
+
+    private func validValue(_ text: String, in range: ClosedRange<Double>) -> Double? {
+        guard let value = Double(text), range.contains(value) else { return nil }
+        return value
+    }
+}
+
+struct GoalNumberField: View {
+    let title: String
+    let unit: String
+    @Binding var text: String
+
+    var body: some View {
+        HStack {
+            Text(title)
+                .font(.subheadline.weight(.medium))
+            Spacer()
+            TextField("", text: $text)
+                .multilineTextAlignment(.trailing)
+                .keyboardType(.decimalPad)
+                .font(.body.monospacedDigit())
+                .frame(width: 100)
+            Text(unit)
+                .font(.subheadline)
+                .foregroundStyle(Color.readableSecondary)
+                .frame(width: 36, alignment: .leading)
+        }
+        .padding(.vertical, 5)
+    }
+}
+
+struct DataAndPrivacySheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var store: AppStore
+    @State private var showsClearConfirmation = false
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Card {
+                        PrivacyExplanationRow(icon: "internaldrive", text: "饮食记录、体重记录、目标和可重置设置保存在本机；卸载 App 或更换手机后不会自动恢复。")
+                        Divider()
+                        PrivacyExplanationRow(icon: "photo", text: "食物照片仅用于本次 AI 分析，不在 App 内长期保存。")
+                        Divider()
+                        PrivacyExplanationRow(icon: "key", text: "AI 服务密钥不保存在 App 内。")
+                        Divider()
+                        PrivacyExplanationRow(icon: "cross.case", text: "营养结果为估算参考，不作为医疗建议。")
+                    }
+
                     if let message = store.localDataMessage {
                         Text(message)
                             .font(.footnote)
                             .foregroundStyle(Color.readableSecondary)
                     }
+
                     Button("删除全部本机数据", role: .destructive) {
-                        store.clearAllLocalData()
+                        showsClearConfirmation = true
                     }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color.red.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
-                Section("关于") {
-                    Text("热量咔")
-                    Button("版本 1.0") {
-                        aboutTapCount += 1
-                        if aboutTapCount >= 7 {
-                            showsAdvancedAISettings = true
-                            aboutTapCount = 0
-                            proxyBaseURLDraft = store.proxyBaseURLString
-                            store.toast = "已开启高级设置"
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    Text("AI 识别和营养估算仅用于饮食记录参考。")
+                .padding()
+            }
+            .background(Color.cream)
+            .navigationTitle("本机数据与隐私")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { dismiss() }
+                }
+            }
+            .alert("删除全部本机数据？", isPresented: $showsClearConfirmation) {
+                Button("取消", role: .cancel) {}
+                Button("删除", role: .destructive) {
+                    store.clearAllLocalData()
+                    dismiss()
+                }
+            } message: {
+                Text("这会删除本机的饮食、体重、目标和可重置设置，无法撤销。")
+            }
+        }
+    }
+}
+
+struct PrivacyExplanationRow: View {
+    let icon: String
+    let text: String
+
+    var body: some View {
+        Label {
+            Text(text)
+                .font(.footnote)
+                .foregroundStyle(Color.readableSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: icon)
+                .foregroundStyle(Color.coral)
+        }
+    }
+}
+
+struct ConnectionDiagnosticsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var store: AppStore
+    @State private var proxyBaseURLDraft = ""
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("只有在 AI 分析或网络连接异常时才需要修改。一般情况下请保留默认服务地址。")
                         .font(.footnote)
                         .foregroundStyle(Color.readableSecondary)
-                }
-                if showsAdvancedAISettings {
-                    Section("高级连接设置") {
-                        Text("仅在需要排查 AI 连接时使用。一般情况下不需要修改。")
-                            .font(.footnote)
-                            .foregroundStyle(Color.readableSecondary)
 
-                        TextField("http://服务地址:8787", text: $proxyBaseURLDraft)
+                    Card {
+                        Text("服务地址")
+                            .font(.headline)
+                        TextField("https://服务地址", text: $proxyBaseURLDraft)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .keyboardType(.URL)
-
-                        HStack {
-                            Button("保存服务地址") {
-                                store.applyProxyBaseURL(proxyBaseURLDraft)
-                                proxyBaseURLDraft = store.proxyBaseURLString
-                            }
-                            .buttonStyle(.borderedProminent)
-                            Spacer()
-                            Button("恢复默认地址") {
-                                store.resetProxyBaseURLToSimulatorDefault()
-                                proxyBaseURLDraft = store.proxyBaseURLString
-                            }
-                            .buttonStyle(.bordered)
+                            .textFieldStyle(.roundedBorder)
+                        Button("保存服务地址") {
+                            store.applyProxyBaseURL(proxyBaseURLDraft)
+                            proxyBaseURLDraft = store.proxyBaseURLString
                         }
+                        .buttonStyle(PrimaryActionButtonStyle())
+                        Button("恢复默认地址") {
+                            store.resetProxyBaseURLToSimulatorDefault()
+                            proxyBaseURLDraft = store.proxyBaseURLString
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.coral)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 2)
+                    }
 
-                        Button("检查连接") {
+                    Card {
+                        Button("检查 AI 服务连接") {
                             store.checkProxyHealth()
                         }
-
+                        .buttonStyle(PrimaryActionButtonStyle())
                         if let message = store.proxyConnectionMessage {
                             Text(message)
                                 .font(.footnote)
                                 .foregroundStyle(Color.readableSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
+                .padding()
             }
-            .navigationTitle("设置")
+            .background(Color.cream)
+            .navigationTitle("AI 连接诊断")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") { store.activeModal = nil }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("完成") { dismiss() }
                 }
             }
             .onAppear {
